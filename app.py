@@ -14,60 +14,137 @@ from dotenv import dotenv_values
 
 config = dotenv_values(".env")
 
-app = dash.Dash(__name__)
+app = dash.Dash(__name__, suppress_callback_exceptions=True)
 
 client = MongoClient(config['MONGO_CONN_STRING'])
 
 db = client.myFirstDatabase
 recipesCollection = db.recipes
 
-# Create dataframe from collection
-recipesList = list(recipesCollection.find({}, {'_id': False}).limit(20))
-
-recipesDF = pd.DataFrame(recipesList)
-
 app.layout = html.Div([
-    html.H1('READ'),
-    dash_table.DataTable(
-        columns=[{"name": i, "id": i} for i in recipesDF.columns],
-        data = recipesList,
-        page_size = 10,
-        fixed_columns={ 'headers': True, 'data': 1 },
-        style_table={'minWidth': '100%'},
-        style_cell={
-            # all three widths are needed
-            'minWidth': '180px', 'width': '180px', 'maxWidth': '180px',
-            'overflow': 'hidden',
-            'textOverflow': 'ellipsis',
-            'padding': '5px'
-        },
-        style_data_conditional=[
-            {
-                'if': {
-                    'column_id': 'name'
+    html.H1('mongo-crud-aat'),
+
+    html.Div(id='mongo-datatable', children=[]),
+
+    # activated once/week or when page refreshed
+    dcc.Interval(id='interval_db', interval=86400000 * 7, n_intervals=0),
+
+    html.Div(id='button-flex', children=[
+        html.Button("Save to Mongo Database", id="save-it", className='button'),
+        html.Button('Add Row', id='adding-rows-btn', n_clicks=0, className='button'),
+    ]),
+
+
+    html.Div(id="show-graphs", children=[]),
+    html.Div(id="placeholder")
+
+])
+
+# Display Datatable with data from Mongo database *************************
+@app.callback(Output('mongo-datatable', 'children'),
+              [Input('interval_db', 'n_intervals')])
+def populate_datatable(n_intervals):
+    print(n_intervals)
+    
+    # Fetch recipes from Mongo
+    recipesList = list(recipesCollection.find({}, {'_id': False}))
+    # Create dataframe from collection
+    recipesDF = pd.DataFrame(recipesList)
+
+    return [
+        dash_table.DataTable(
+            id='my-table',
+            columns=[{"name": i, "id": i} for i in recipesDF.columns],
+            data = recipesList,
+            page_size = 10,
+            fixed_columns={ 'headers': True, 'data': 1 },
+            style_table={'minWidth': '100%'},
+            style_cell={
+                # all three widths are needed
+                'minWidth': '180px', 'width': '180px', 'maxWidth': '180px',
+                'overflow': 'hidden',
+                'textOverflow': 'ellipsis',
+                'padding': '0px 5px 0px 5px'
+            },
+            style_data_conditional=[
+                {
+                    'if': {'column_id': 'name'},
+                    'minWidth': 'auto', 'width': 'auto', 'maxWidth': 'auto',
+                    'fontWeight': 'bold'
                 },
-                'minWidth': 'auto', 'width': 'auto', 'maxWidth': 'auto',
+            ],
+            style_header={
+                'backgroundColor': 'white',
                 'fontWeight': 'bold'
             },
-        ],
-        style_as_list_view=True,
-        style_header={
-            'backgroundColor': 'white',
-            'fontWeight': 'bold'
-        },
-        filter_action="native",
-        tooltip_data=[
-            {
-                column: {'value': str(value), 'type': 'markdown'}
-                for column, value in row.items()
-            } for row in recipesList
-        ],
-        css=[{
-            'selector': '.dash-table-tooltip',
-            'rule': 'font-family: monospace;'
-        }],
+            filter_action="native",
+            tooltip_data=[
+                {
+                    column: {'value': str(value), 'type': 'markdown'}
+                    for column, value in row.items()
+                } for row in recipesList
+            ],
+            css=[{
+                'selector': '.dash-table-tooltip',
+                'rule': 'font-family: monospace;'
+            }],
+            editable=True,
+            row_deletable=True,
+            export_format='xlsx',
+            export_headers='display',
+            merge_duplicate_headers=True,            
+        )
+    ]
+
+
+# Add new rows to DataTable
+@app.callback(
+    Output('my-table', 'data'),
+    [Input('adding-rows-btn', 'n_clicks')],
+    [State('my-table', 'data'),
+     State('my-table', 'columns')],
+)
+def add_row(n_clicks, rows, columns):
+    if n_clicks > 0:
+        rows.append({c['id']: '' for c in columns})
+    return rows
+
+
+# Save new DataTable data to the Mongo database
+@app.callback(
+    Output("placeholder", "children"),
+    Input("save-it", "n_clicks"),
+    State("my-table", "data"),
+    prevent_initial_call=True
+)
+def save_data(n_clicks, data):
+    print('saving to db')
+    dff = pd.DataFrame(data)
+    recipesCollection.delete_many({})
+    recipesCollection.insert_many(dff.to_dict('records'))
+
+    return ""
+
+
+# Create graphs from DataTable data
+@app.callback(
+    Output('show-graphs', 'children'),
+    Input('my-table', 'data')
+)
+def add_row(data):
+    df_graph = pd.DataFrame(data)
+    rating_kebabs = px.box(
+        df_graph[df_graph.category != 'uncategorized'],
+        x="rating",
+        y="category",
+        orientation='h',
+        # height=600,
+        # width=800
     )
-])
+    return [
+        html.Div([dcc.Graph(figure=rating_kebabs)])
+    ]
+
 
 if __name__ == '__main__':
     app.run_server(debug=True)
