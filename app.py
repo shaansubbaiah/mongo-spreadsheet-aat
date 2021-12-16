@@ -1,6 +1,3 @@
-# Run this app with `python app.py` and
-# visit http://127.0.0.1:8050/ in your web browser.
-
 import dash
 from dash import dcc
 from dash import html
@@ -9,7 +6,6 @@ from dash.dependencies import Input, Output, State
 import plotly.express as px
 import pandas as pd
 from pymongo import MongoClient
-import pprint
 from dotenv import dotenv_values
 
 config = dotenv_values(".env")
@@ -22,23 +18,28 @@ db = client.myFirstDatabase
 recipesCollection = db.recipes
 
 app.layout = html.Div([
-    html.H1('mongo-crud-aat'),
+        html.Div([
+                html.H1('NoSQL - AAT ✨'),
+                html.P('Frontend to perform CRUD operations on MongoDB.')
+            ], 
+            id='heading'
+        ),
 
-    html.Div(id='mongo-datatable', children=[]),
+        html.Div(id='mongo-datatable', children=[]),
 
-    # activated once/week or when page refreshed
-    dcc.Interval(id='interval_db', interval=86400000 * 7, n_intervals=0),
+        # activated once/week or when page refreshed
+        dcc.Interval(id='interval_db', interval=86400000 * 7, n_intervals=0),
 
-    html.Div(id='button-flex', children=[
-        html.Button("Save to Mongo Database", id="save-it", className='button'),
-        html.Button('Add Row', id='adding-rows-btn', n_clicks=0, className='button'),
-    ]),
+        html.Div(id='button-flex', children=[
+            html.Button("↓ Save to Mongo Database", id="save-it", className='button'),
+            html.Button('+ Add Row', id='adding-rows-btn', n_clicks=0, className='button'),
+        ]),
 
-
-    html.Div(id="show-graphs", children=[]),
-    html.Div(id="placeholder")
-
-])
+        html.Div(id="show-graphs", children=[]),
+        html.Div(id="placeholder")
+    ],
+    id='container',
+)
 
 # Display Datatable with data from Mongo database *************************
 @app.callback(Output('mongo-datatable', 'children'),
